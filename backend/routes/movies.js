@@ -4,51 +4,40 @@ const Movie = require('../models/Movie');
 const { auth, adminOnly } = require('../middleware/auth');
 const amqp = require('amqplib');
 
-// Initialize RabbitMQ
-let channel;
+// Escape special regex characters
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+let channel = null;
 async function connectRabbitMQ() {
-  const connection = await amqp.connect(process.env.RABBITMQ_URL);
-  channel = await connection.createChannel();
-  await channel.assertQueue('movie_queue', { durable: true });
+  try {
+    const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost');
+    channel = await connection.createChannel();
+    await channel.assertQueue('movie_queue', { durable: true });
+    console.log('Connected to RabbitMQ');
+  } catch (err) {
+    console.error('Failed to connect to RabbitMQ:', err.message);
+    channel = null;
+  }
 }
 connectRabbitMQ();
 
-// GET all movies
+// GET all movies with pagination
 router.get('/', async (req, res) => {
   try {
-    const movies = await Movie.find();
-    res.json(movies);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-// GET sorted movies
-router.get('/sorted', async (req, res) => {
-  const { sortBy } = req.query;
-  const validSortFields = ['title', 'rating', 'releaseDate', 'duration'];
-  if (!validSortFields.includes(sortBy)) {
-    return res.status(400).json({ message: 'Invalid sort field' });
-  }
-  try {
-    const movies = await Movie.find().sort(sortBy);
-    res.json(movies);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+    const movies = await Movie.find().skip(skip).limit(limit);
+    const totalMovies = await Movie.countDocuments();
 
-// GET search movies
-router.get('/search', async (req, res) => {
-  const { query } = req.query;
-  try {
-    const movies = await Movie.find({
-      $or: [
-        { title: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } },
-      ],
+    res.json({
+      movies,
+      totalPages: Math.ceil(totalMovies / limit),
+      currentPage: page,
     });
-    res.json(movies);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -58,14 +47,51 @@ router.get('/search', async (req, res) => {
 router.post('/', auth, adminOnly, async (req, res) => {
   try {
     const movieData = req.body;
-    channel.sendToQueue('movie_queue', Buffer.from(JSON.stringify(movieData)), { persistent: true });
-    res.status(202).json({ message: 'Movie added to queue' });
+    if (channel) {
+      channel.sendToQueue('movie_queue', Buffer.from(JSON.stringify(movieData)), { persistent: true });
+      res.status(202).json({ message: 'Movie added to queue' });
+    } else {
+      const movie = new Movie(movieData);
+      await movie.save();
+      res.status(201).json({ message: 'Movie added directly to database', movie });
+    }
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// PUT edit movie (admin only)
+// GET sorted movies
+router.get('/sorted', async (req, res) => {
+  try {
+    const movies = await Movie.find().sort({ rating: -1 }).limit(10);
+    res.json(movies);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET search movies
+router.get('/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim() === '') {
+      return res.status(400).json({ message: 'Search query is required' });
+    }
+    const escapedQuery = escapeRegex(q);
+    const movies = await Movie.find({
+      $or: [
+        { title: { $regex: escapedQuery, $options: 'i' } },
+        { description: { $regex: escapedQuery, $options: 'i' } },
+      ],
+    });
+    res.json(movies);
+  } catch (err) {
+    console.error('Search route error:', err);
+    res.status(500).json({ message: 'Server error while searching movies' });
+  }
+});
+
+// PUT update movie (admin only)
 router.put('/:id', auth, adminOnly, async (req, res) => {
   try {
     const movie = await Movie.findByIdAndUpdate(req.params.id, req.body, { new: true });
