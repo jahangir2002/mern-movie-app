@@ -44,20 +44,20 @@ router.get('/', async (req, res) => {
 
 // POST add movie (admin only)
 router.post('/', auth, adminOnly, async (req, res) => {
-  try {
-    const movieData = req.body;
-    if (channel) {
-      channel.sendToQueue('movie_queue', Buffer.from(JSON.stringify(movieData)), { persistent: true });
-      res.status(202).json({ message: 'Movie added to queue' });
-    } else {
-      const movie = new Movie(movieData);
-      await movie.save();
-      res.status(201).json({ message: 'Movie added directly to database', movie });
+    try {
+      const movieData = req.body;
+      if (channel) {
+        channel.sendToQueue('movie_queue', Buffer.from(JSON.stringify(movieData)), { persistent: true });
+        res.status(202).json({ message: 'Movie added to queue' });
+      } else {
+        const movie = new Movie(movieData);
+        await movie.save();
+        res.status(201).json({ message: 'Movie added directly to database', movie });
+      }
+    } catch (err) {
+      res.status(500).json({ message: err.message });
     }
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+  });
 
 // GET sorted movies
 router.get('/sorted', async (req, res) => {

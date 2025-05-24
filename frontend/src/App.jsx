@@ -2,13 +2,13 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
+import Login from './pages/Login';
 import Search from './pages/Search';
 import AddMovie from './pages/AddMovie';
 import EditMovie from './pages/EditMovie';
-import Login from './pages/Login';
 import ProtectedRoute from './components/ProtectedRoute';
 
-function App() {
+const App = () => {
   return (
     <AuthProvider>
       <Router>
@@ -16,8 +16,8 @@ function App() {
         <div className="container mx-auto p-4">
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/search" element={<Search />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/search" element={<Search />} />
             <Route
               path="/add-movie"
               element={
@@ -39,6 +39,6 @@ function App() {
       </Router>
     </AuthProvider>
   );
-}
+};
 
 export default App;
