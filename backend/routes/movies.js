@@ -4,7 +4,6 @@ const Movie = require('../models/Movie');
 const { auth, adminOnly } = require('../middleware/auth');
 const amqp = require('amqplib');
 
-// Escape special regex characters
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
@@ -74,6 +73,7 @@ router.get('/sorted', async (req, res) => {
 router.get('/search', async (req, res) => {
   try {
     const { q } = req.query;
+    console.log('Search query received:', q);
     if (!q || q.trim() === '') {
       return res.status(400).json({ message: 'Search query is required' });
     }
@@ -84,7 +84,8 @@ router.get('/search', async (req, res) => {
         { description: { $regex: escapedQuery, $options: 'i' } },
       ],
     });
-    res.json(movies);
+    console.log('Search results:', movies);
+    res.json(movies || []);
   } catch (err) {
     console.error('Search route error:', err);
     res.status(500).json({ message: 'Server error while searching movies' });
